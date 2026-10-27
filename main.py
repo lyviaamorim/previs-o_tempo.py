@@ -347,3 +347,43 @@ def inserir_previsao(conexao, registros):
         conexao.rollback()
         print(f"[ERRO] Falha ao inserir. Rollback executado: {erro}")
         return False
+
+
+
+def listar_previsoes(conexao):
+    """Consulta a tabela e mostra tudo o que está salvo no banco."""
+    with conexao.cursor() as cursor:
+        cursor.execute(SQL_SELECT)
+        linhas = cursor.fetchall()
+
+    print(f"\n=== Dados salvos no Oracle ({len(linhas)} registros) ===")
+    for (cidade, estado, data, coleta, media, chuva, cls_dia, cls_chuva) in linhas:
+        print(
+            f"{data:%d/%m/%Y} (coleta {coleta:%d/%m %H:%M}) | {cidade}-{estado} | "
+            f"média {media} °C | {chuva} mm | {cls_dia} / {cls_chuva}"
+        )
+
+
+def comparar_previsoes(conexao):
+    """
+    Mostra como a previsão de um mesmo dia mudou entre uma coleta e a seguinte
+    (variação da temperatura média e da chuva).
+    """
+    with conexao.cursor() as cursor:
+        cursor.execute(SQL_EVOLUCAO)
+        linhas = cursor.fetchall()
+
+    # Só interessam as linhas que têm uma coleta anterior para comparar
+    comparaveis = [l for l in linhas if l[4] is not None]
+
+    print("\n=== Evolução da previsão entre coletas ===")
+    if not comparaveis:
+        print("Ainda não há coletas repetidas para comparar.")
+        return
+
+    for (cidade, data, coleta, media, var_temp, chuva, var_chuva) in comparaveis:
+        print(
+            f"{data:%d/%m/%Y} | {cidade} | coleta {coleta:%d/%m %H:%M} | "
+            f"temp. média {media} °C ({var_temp:+.1f}) | "
+            f"chuva {chuva} mm ({var_chuva:+.1f})"
+        )
