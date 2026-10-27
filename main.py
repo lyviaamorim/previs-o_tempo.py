@@ -387,3 +387,59 @@ def comparar_previsoes(conexao):
             f"temp. média {media} °C ({var_temp:+.1f}) | "
             f"chuva {chuva} mm ({var_chuva:+.1f})"
         )
+
+
+
+# ---------------------------------------------------------------------------
+# PROGRAMA PRINCIPAL
+# ---------------------------------------------------------------------------
+def processar_cidade(conexao, nome_cidade):
+    """Executa o pipeline completo para uma cidade."""
+    cidade = buscar_cidade(nome_cidade)
+    if not cidade:
+        return
+
+    print(f"Cidade encontrada: {cidade['nome']} - {cidade['estado']}")
+    previsao = buscar_previsao(
+        cidade["latitude"], cidade["longitude"], cidade["timezone"]
+    )
+    if not previsao:
+        return
+
+    registros = transformar_previsao(cidade, previsao)
+    print(f"{len(registros)} registros transformados.")
+    inserir_previsao(conexao, registros)
+
+
+def main():
+    print("=== Previsão do Tempo: Open-Meteo -> Oracle ===")
+
+    conexao = conectar_oracle()
+    if conexao is None:
+        return
+
+    try:
+        criar_tabela(conexao)
+
+        while True:
+            nome = input("\nDigite o nome da cidade: ").strip()
+            if nome:
+                processar_cidade(conexao, nome)
+            else:
+                print("[AVISO] Digite um nome de cidade.")
+
+            outra = input("Pesquisar outra cidade? (s/n): ").strip().lower()
+            if outra != "s":
+                break
+
+        listar_previsoes(conexao)
+        comparar_previsoes(conexao)
+    except oracledb.Error as erro:
+        print(f"[ERRO] Erro no banco de dados: {erro}")
+    finally:
+        conexao.close()
+        print("\nConexão encerrada.")
+
+
+if __name__ == "__main__":
+    main()
