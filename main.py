@@ -326,3 +326,24 @@ def criar_tabela(conexao):
         else:
             print(f"[ERRO] Falha ao criar a tabela: {erro}")
             raise
+
+
+def inserir_previsao(conexao, registros):
+    """
+    Grava os registros transformados em uma única transação.
+    Se qualquer comando falhar, rollback() desfaz tudo; se der certo, commit().
+    """
+    if not registros:
+        print("[AVISO] Nenhum registro para inserir.")
+        return False
+
+    try:
+        with conexao.cursor() as cursor:
+            cursor.executemany(SQL_INSERT, registros)
+        conexao.commit()
+        print(f"[OK] {len(registros)} registros gravados (commit realizado).")
+        return True
+    except oracledb.Error as erro:
+        conexao.rollback()
+        print(f"[ERRO] Falha ao inserir. Rollback executado: {erro}")
+        return False
