@@ -11,6 +11,8 @@ Integrantes do grupo:
   - Yasmin Souza Silva Martins RM:572102
 """
 
+from datetime import datetime
+
 import requests
 
 # ---------------------------------------------------------------------------
@@ -129,3 +131,106 @@ def buscar_previsao(latitude, longitude, timezone):
             "precipitacao": diario["precipitation_sum"][i],
         })
     return previsao
+
+
+
+# ---------------------------------------------------------------------------
+# PASSO 3 - TRANSFORMAÇÕES EM MEMÓRIA
+# ---------------------------------------------------------------------------
+def calcular_metricas(temp_max, temp_min):
+    """
+    TRANSFORMAÇÃO 1 (cálculo): temperatura média e amplitude térmica do dia.
+      média     = (máxima + mínima) / 2
+      amplitude = máxima - mínima
+    """
+    temp_media = round((temp_max + temp_min) / 2, 1)
+    amplitude = round(temp_max - temp_min, 1)
+    return temp_media, amplitude
+
+
+def classificar_dia(temp_media):
+    """
+    TRANSFORMAÇÃO 2 (categorização): classifica o dia pela temperatura média.
+      abaixo de 15 °C        -> Frio
+      de 15 °C até 22 °C     -> Agradável  (exclusive 22)
+      de 22 °C até 28 °C     -> Quente     (exclusive 28)
+      28 °C ou mais          -> Muito quente
+    """
+    if temp_media < 15:
+        return "Frio"
+    elif temp_media < 22:
+        return "Agradável"
+    elif temp_media < 28:
+        return "Quente"
+    return "Muito quente"
+
+
+def classificar_chuva(precipitacao_mm):
+    """
+    TRANSFORMAÇÃO 3 (categorização): classifica a chuva pelo total diário em mm.
+      0 mm               -> Sem chuva
+      até 5 mm           -> Fraca
+      acima de 5 até 25  -> Moderada
+      acima de 25 mm     -> Forte
+    """
+    if precipitacao_mm == 0:
+        return "Sem chuva"
+    elif precipitacao_mm <= 5:
+        return "Fraca"
+    elif precipitacao_mm <= 25:
+        return "Moderada"
+    return "Forte"
+
+
+def padronizar_texto(texto):
+    """
+    TRANSFORMAÇÃO 4a (limpeza): remove espaços extras e deixa em MAIÚSCULAS,
+    para o mesmo nome sempre ficar igual na chave primária do banco.
+    """
+    if not texto:
+        return "NÃO INFORMADO"
+    return " ".join(texto.split()).upper()
+
+
+def converter_data(data_texto):
+    """
+    TRANSFORMAÇÃO 4b (formatação): converte 'AAAA-MM-DD' (texto da API)
+    para um objeto date do Python, que o Oracle grava na coluna DATE.
+    """
+    return datetime.strptime(data_texto, "%Y-%m-%d").date()
+
+
+def transformar_previsao(cidade, previsao):
+    """
+    Aplica todas as transformações e devolve a lista de registros
+    prontos para inserir no Oracle (um dict por dia).
+    """
+    data_coleta = datetime.now()
+    registros = []
+
+    for dia in previsao:
+        # Ignora dias com dados incompletos (a API pode devolver None)
+        if dia["temp_max"] is None or dia["temp_min"] is None:
+            continue
+
+        # Chuva ausente é tratada como 0 mm
+        chuva = dia["precipitacao"] if dia["precipitacao"] is not None else 0.0
+
+        temp_media, amplitude = calcular_metricas(dia["temp_max"], dia["temp_min"])
+
+        registros.append({
+            "cidade": padronizar_texto(cidade["nome"]),
+            "estado": padronizar_texto(cidade["estado"]),
+            "latitude": cidade["latitude"],
+            "longitude": cidade["longitude"],
+            "data_previsao": converter_data(dia["data"]),
+            "temp_max": dia["temp_max"],
+            "temp_min": dia["temp_min"],
+            "temp_media": temp_media,
+            "amplitude": amplitude,
+            "precipitacao": chuva,
+            "classificacao_dia": classificar_dia(temp_media),
+            "classificacao_chuva": classificar_chuva(chuva),
+            "data_coleta": data_coleta,
+        })
+    return registros
