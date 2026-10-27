@@ -11,8 +11,10 @@ Integrantes do grupo:
   - Yasmin Souza Silva Martins RM:572102
 """
 
+import os
 from datetime import datetime
 
+import oracledb
 import requests
 
 # ---------------------------------------------------------------------------
@@ -234,3 +236,93 @@ def transformar_previsao(cidade, previsao):
             "data_coleta": data_coleta,
         })
     return registros
+
+
+
+# ---------------------------------------------------------------------------
+# PASSO 4 - PERSISTÊNCIA NO ORACLE (oracledb)
+# ---------------------------------------------------------------------------
+SQL_CREATE_TABLE = """
+CREATE TABLE TB_PREVISAO_TEMPO (
+    CIDADE              VARCHAR2(100)  NOT NULL,
+    DATA_PREVISAO       DATE           NOT NULL,
+    ESTADO              VARCHAR2(100),
+    LATITUDE            NUMBER(9,5),
+    LONGITUDE           NUMBER(9,5),
+    TEMP_MAX            NUMBER(4,1),
+    TEMP_MIN            NUMBER(4,1),
+    TEMP_MEDIA          NUMBER(4,1),
+    AMPLITUDE_TERMICA   NUMBER(4,1),
+    PRECIPITACAO_MM     NUMBER(6,1),
+    CLASSIFICACAO_DIA   VARCHAR2(20),
+    CLASSIFICACAO_CHUVA VARCHAR2(20),
+    DATA_COLETA         TIMESTAMP DEFAULT SYSTIMESTAMP NOT NULL,
+    CONSTRAINT PK_PREVISAO_TEMPO PRIMARY KEY (CIDADE, DATA_PREVISAO, DATA_COLETA)
+)
+"""
+
+# Cada execução grava uma NOVA coleta (DATA_COLETA faz parte da PK), então a
+# previsão antiga do mesmo dia é mantida e o histórico não é perdido.
+SQL_INSERT = """
+INSERT INTO TB_PREVISAO_TEMPO
+    (CIDADE, DATA_PREVISAO, ESTADO, LATITUDE, LONGITUDE, TEMP_MAX, TEMP_MIN,
+     TEMP_MEDIA, AMPLITUDE_TERMICA, PRECIPITACAO_MM, CLASSIFICACAO_DIA,
+     CLASSIFICACAO_CHUVA, DATA_COLETA)
+VALUES
+    (:cidade, :data_previsao, :estado, :latitude, :longitude, :temp_max,
+     :temp_min, :temp_media, :amplitude, :precipitacao, :classificacao_dia,
+     :classificacao_chuva, :data_coleta)
+"""
+
+SQL_SELECT = """
+SELECT CIDADE, ESTADO, DATA_PREVISAO, DATA_COLETA, TEMP_MEDIA,
+       PRECIPITACAO_MM, CLASSIFICACAO_DIA, CLASSIFICACAO_CHUVA
+  FROM TB_PREVISAO_TEMPO
+ ORDER BY CIDADE, DATA_PREVISAO, DATA_COLETA
+"""
+
+# Compara cada coleta com a coleta anterior do MESMO dia e cidade (função LAG)
+SQL_EVOLUCAO = """
+SELECT CIDADE, DATA_PREVISAO, DATA_COLETA,
+       TEMP_MEDIA,
+       TEMP_MEDIA - LAG(TEMP_MEDIA) OVER (
+           PARTITION BY CIDADE, DATA_PREVISAO ORDER BY DATA_COLETA) AS VAR_TEMP,
+       PRECIPITACAO_MM,
+       PRECIPITACAO_MM - LAG(PRECIPITACAO_MM) OVER (
+           PARTITION BY CIDADE, DATA_PREVISAO ORDER BY DATA_COLETA) AS VAR_CHUVA
+  FROM TB_PREVISAO_TEMPO
+ ORDER BY CIDADE, DATA_PREVISAO, DATA_COLETA
+"""
+
+
+def conectar_oracle():
+    """Abre a conexão com o Oracle da FIAP. Retorna a conexão ou None se falhar."""
+    try:
+        conexao = oracledb.connect(
+            user=ORACLE_USER, password=ORACLE_PASSWORD, dsn=ORACLE_DSN
+        )
+        print("[OK] Conectado ao Oracle.")
+        return conexao
+    except oracledb.Error as erro:
+        # Usuário/senha inválidos, serviço inexistente, etc.
+        print(f"[ERRO] Não foi possível conectar ao Oracle: {erro}")
+        return None
+    except OSError as erro:
+        # Host não encontrado, sem rede/VPN, porta bloqueada, etc.
+        print(f"[ERRO] Falha de rede ao acessar o Oracle (host/DSN, VPN ou internet): {erro}")
+        return None
+
+
+def criar_tabela(conexao):
+    """Cria a tabela TB_PREVISAO_TEMPO. Se ela já existir (ORA-00955), segue em frente."""
+    try:
+        with conexao.cursor() as cursor:
+            cursor.execute(SQL_CREATE_TABLE)
+        print("[OK] Tabela TB_PREVISAO_TEMPO criada.")
+    except oracledb.DatabaseError as erro:
+        codigo = erro.args[0].code
+        if codigo == 955:
+            print("[OK] Tabela TB_PREVISAO_TEMPO já existe.")
+        else:
+            print(f"[ERRO] Falha ao criar a tabela: {erro}")
+            raise
