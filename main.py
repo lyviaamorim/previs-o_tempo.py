@@ -24,12 +24,12 @@ URL_GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
 URL_FORECAST = "https://api.open-meteo.com/v1/forecast"
 TIMEOUT_SEGUNDOS = 10
 
-# Credenciais do Oracle .
+# Credenciais do Oracle da FIAP.
 # Preencha aqui OU defina as variáveis de ambiente ORACLE_USER, ORACLE_PASSWORD
 # e ORACLE_DSN. NUNCA envie a senha real para o Git.
-ORACLE_USER = os.getenv("ORACLE_USER",)
-ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD",)
-ORACLE_DSN = os.getenv("ORACLE_DSN", "oracle.----.com.br:XXXX/ORCL")
+ORACLE_USER = os.getenv("ORACLE_USER", "RMXXXXX")
+ORACLE_PASSWORD = os.getenv("ORACLE_PASSWORD", "XXXXXX")
+ORACLE_DSN = os.getenv("ORACLE_DSN", "oracle.fiap.com.br:1521/ORCL")
 
 # ---------------------------------------------------------------------------
 # PASSO 2 - CONSUMO DAS APIs (requests)
